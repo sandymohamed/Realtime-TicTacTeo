@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Button, CircularProgress, Grid, Stack, TextField, Typography } from "@mui/material";
+import { Box, Button, CircularProgress, Grid, Link, Stack, TextField, Typography } from "@mui/material";
 import { doc, updateDoc, getDoc, onSnapshot, collection, addDoc, getDocs } from "firebase/firestore";
 import { db } from './firebaseConfig'; // Adjust this import based on where your firebaseConfig.js is located
 
@@ -283,8 +283,8 @@ export default function TicTacToe() {
     console.log("gameData", gameData)
   }, [gameData]);
 
-  return (
-    <Stack xs={12} md={8} sx={{ height: "90vh", alignItems: "center", justifyContent: "flex-start", my: 5}} >
+  return (<>
+    <Stack xs={12} md={8} sx={{ height: "85vh", alignItems: "center", justifyContent: "flex-start", my: 5}} >
       <Typography sx={{ mx: 3 }}>Player: {playerId}</Typography>
       <Typography sx={{ mx: 3 }}>Game: {gameId}</Typography>
      {(gameId && gameData && gameData?.status === "waiting" )&& <>
@@ -294,7 +294,7 @@ export default function TicTacToe() {
      </>
       }
       {!gameId && (
-        <Stack direction="row" spacing={3} sx={{ my: 5 }}>
+        <Stack direction="row" spacing={2} sx={{ my: 5, flexWrap: 'wrap',alignItems: "center", justifyContent: "center"  }}>
           <Button variant="contained" onClick={handleCreateGame}>Create Game</Button>
           <Button variant="contained" onClick={handleJoinExistGame}>Join Existing Game</Button>
           <Button variant="contained" onClick={handleJoinRandomGame}>Join Random Game</Button>
@@ -332,5 +332,11 @@ export default function TicTacToe() {
         <Button variant="contained" onClick={restart} >Play Again</Button>
       )}
     </Stack>
+
+      <Box sx={{display: "flex",alignItems: 'end', justifyContent: "center"}}>
+      <Link href="https://www.linkedin.com/in/sandy-mohammed-developer/"> Sandy Mohammed </Link>
+      </Box>
+  </>
+
   );
 }
