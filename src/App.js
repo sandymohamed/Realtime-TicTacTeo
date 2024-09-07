@@ -1,189 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Box, Button, CircularProgress, Grid, Link, Stack, TextField, Typography } from "@mui/material";
-import { doc, updateDoc, getDoc, onSnapshot, collection, addDoc, getDocs } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from './firebaseConfig'; // Adjust this import based on where your firebaseConfig.js is located
+import { useGameListener } from './hooks/useGameListener';
+import { createGame, debounce, generateUniqueId, joinExistGame, joinGame, makeMove, ResetGame, UPDPlayerId } from './utilis';
+import { ToastContainer } from 'react-toastify';
 
-function generateUniqueId() {
-  return Math.random().toString(36).substr(2, 9);
-}
-
-// Create a new game
-async function createGame(playerId, setGameId) {
-  console.log("in create");
-
-  try {
-    const newGameRef = await addDoc(collection(db, "games"), {
-      board: Array(9).fill(null),
-      players: [playerId],
-      currentTurn: 0,
-      status: "waiting"
-    });
-    setGameId(newGameRef.id);
-  } catch (error) {
-    console.error("Error creating game: ", error);
-  }
-}
-// Join Exist game
-async function joinExistGame(playerId, setGameId, setGameJoined) {
-  try {
-    const gameSnap = await getDocs(collection(db, "games"));
-
-    // ****update this to be find to not continue
-    // await gameSnap.forEach(async (game) => {
-
-    //   console.log(game.id, " => ", game.data().status);
-    //   if (game.data().status === "waiting" && game.data().players.length < 2) {
-
-    //     found = true;
-    //     const gameRef = doc(db, "games", game.id);
-
-    //     console.log("gameRef:", gameRef)
-    //     await updateDoc(gameRef, {
-    //       players: [...game.data().players, playerId],
-    //       status: "in_progress"
-    //     });
-    //     setGameJoined(true);
-    //     setGameId(game.id);
-    //   }
-    // });
-
-    let findGame = null;
-    gameSnap.forEach((doc) => {
-
-      const gameData = doc.data();
-      if (gameData.status === "waiting" && gameData.players.length < 2 && gameData.players[0] !== playerId) {
-        findGame = { id: doc.id, ...gameData };
-        return false; // Exit the loop once we find a waiting game
-      }
-    });
-
-console.log("findGame:", findGame);
-
-    if (findGame) {
-      const gameRef = doc(db, "games", findGame.id);
-      await updateDoc(gameRef, {
-        players: [...findGame.players, playerId],
-        status: "in_progress"
-      });
-      setGameId(findGame.id);
-      setGameJoined(true);
-    } else {
-      createGame(playerId, setGameId)
-
-    }
-
-  } catch (error) {
-    console.error("Error creating game: ", error);
-  }
-}
-
-// Join an existing game
-async function joinGame(gameId, playerId, setGameJoined) {
-  const gameRef = doc(db, "games", gameId);
-  try {
-    const gameSnap = await getDoc(gameRef);
-    if (gameSnap.exists()) {
-      const gameData = gameSnap.data();
-      if (gameData.players.length < 2) {
-
-        await updateDoc(gameRef, {
-          players: [...gameData.players, playerId],
-          status: "in_progress"
-        });
-        setGameJoined(true);
-      } else {
-        console.log("Game is full");
-      }
-    } else {
-      console.log("Game does not exist");
-    }
-  } catch (error) {
-    console.error("Error joining game: ", error);
-  }
-}
-// check if player win
-function checkWinner(board) {
-  const lines = [
-    [0, 1, 2],
-    [3, 4, 5],
-    [6, 7, 8],
-    [0, 3, 6],
-    [1, 4, 7],
-    [2, 5, 8],
-    [0, 4, 8],
-    [2, 4, 6],
-  ];
-  for (let i = 0; i < lines.length; i++) {
-    const [a, b, c] = lines[i];
-    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-      return board[a];
-    }
-  }
-  return null;
-}
-// Make a move
-async function makeMove(gameId, playerId, cellIndex, setWinner) {
-  const gameRef = doc(db, "games", gameId);
-  try {
-    const gameSnap = await getDoc(gameRef);
-    if (gameSnap.exists()) {
-      const game = gameSnap.data();
-      if (game.status === "in_progress" &&
-        game.players[game.currentTurn] === playerId &&
-        game.board[cellIndex] === null) {
-
-        const newBoard = [...game.board];
-        newBoard[cellIndex] = game.currentTurn === 0 ? 'X' : 'O';
-
-        const winner = checkWinner(newBoard);
-        let newStatus = winner ? "completed" : "in_progress";
-
-        if (winner) {
-          setWinner(winner);
-        }
-        if (!newBoard.includes(null)) {
-          newStatus = "completed";
-        }
-
-        await updateDoc(gameRef, {
-          board: newBoard,
-          currentTurn: 1 - game.currentTurn,
-          status: newStatus,
-          winner: winner
-        });
-      }
-    }
-  } catch (error) {
-    console.error("Error making move: ", error);
-  }
-}
-
-// Listen to game changes
-function useGameListener(gameId, playerId, setGameJoined) {
-  const [gameData, setGameData] = useState(null);
-
-  useEffect(() => {
-    if (!gameId) return;
-
-    const gameRef = doc(db, "games", gameId);
-    const unsubscribe = onSnapshot(gameRef, (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
-        setGameData(data);
-        if (data.players.includes(playerId) && data.players.length === 2) {
-          setGameJoined(true);
-        }
-      } else {
-        setGameData(null);
-      }
-    });
-
-    // Cleanup function
-    return () => unsubscribe();
-  }, [gameId, playerId, setGameJoined]);
-
-  return gameData;
-}
 
 export default function TicTacToe() {
   const [playerId, setPlayerId] = useState(null);
@@ -197,7 +19,7 @@ export default function TicTacToe() {
 
   let gameData = useGameListener(gameId, playerId, setGameJoined);
 
-  const restart =() => {
+  const menu = () => {
     setGameId(null);
     setGameJoined(false);
     setGameCreated(false);
@@ -206,26 +28,33 @@ export default function TicTacToe() {
     setWinner(null);
     // setEnd(false);
     gameData = null;
+    localStorage.removeItem('gameId');
 
-    console.log("gameData", gameData)
+  }
+
+  const restart = () => {
+    setWinner(null);
+    ResetGame(gameId);
 
   }
 
 
-  const handlePlayerId= () => {
+
+  const handlePlayerId = () => {
     const localPlayerId = localStorage.getItem('playerId');
- 
-    if(!localPlayerId) {
+
+    if (!localPlayerId) {
       const newPlayerID = generateUniqueId();
       localStorage.setItem('playerId', newPlayerID);
     } else {
-    setPlayerId(localPlayerId);
+      setPlayerId(localPlayerId);
     }
-    
+
   }
 
   const handleCreateGame = () => {
     createGame(playerId, setGameId);
+
     setGameCreated(true);
   };
 
@@ -255,15 +84,18 @@ export default function TicTacToe() {
   const checkComplete = async () => {
     const gameRef = doc(db, "games", gameId);
     const gameSnap = await getDoc(gameRef);
-    const game = gameSnap.data();
+    const game = gameSnap?.data();
 
-    if (game.status === "completed" && game.winner) {
-      setWinner(game.winner);
-      setGameStarted(false);
-      // setEnd(true);
-    }
-    else if (game.status === "completed" && !game.winner) {
-      setGameStarted(false);
+    if (game) {
+
+      if (game.status === "completed" && game.winner) {
+        setWinner(game.winner);
+        setGameStarted(false);
+        // setEnd(true);
+      }
+      else if (game.status === "completed" && !game.winner) {
+        setGameStarted(false);
+      }
     }
   }
 
@@ -278,64 +110,143 @@ export default function TicTacToe() {
     if (gameData && gameData.players.length === 2 && gameData.status === "in_progress") {
       setGameStarted(true);
     }
-    handlePlayerId(); 
+    handlePlayerId();
     // setEnd(false); 
-    console.log("gameData", gameData)
+
   }, [gameData]);
 
+
+  useEffect(() => {
+
+    if (gameId) {
+      localStorage.setItem('gameId', gameId);
+    }
+    const localGameId = localStorage.getItem('gameId');
+
+    if (localGameId) {
+      setGameId(localGameId);
+    }
+
+  }, [gameId])
+
+
+  const debouncedUpdatePlayerId = debounce(async (gameId, oldPlayerId, newPlayerId) => {
+    let updPlayer;
+
+    if (gameId && oldPlayerId && newPlayerId) {
+      updPlayer = await UPDPlayerId(gameId, oldPlayerId, newPlayerId);
+    }
+
+    if (updPlayer) {
+
+      setPlayerId(newPlayerId);
+      localStorage.setItem('playerId', newPlayerId);
+    }
+
+
+  }, 1000);
+
   return (<>
-    <Stack xs={12} md={8} sx={{ height: "85vh", alignItems: "center", justifyContent: "flex-start", my: 5}} >
-      <Typography sx={{ mx: 3 }}>Player: {playerId}</Typography>
-      <Typography sx={{ mx: 3 }}>Game: {gameId}</Typography>
-     {(gameId && gameData && gameData?.status === "waiting" )&& <>
-      <Typography sx={{ my: 6, display: 'flex', flexDirection: "column" ,alignItems: "center", justifyContent: "center" }}>Waitnig another player to join this session with you </Typography>
-      <br /> <CircularProgress /> 
-      <Button variant="contained" onClick={restart} > Start Over</Button>
-     </>
-      }
+    <Stack xs={12} md={8} sx={{ height: "85vh", alignItems: "center", justifyContent: "flex-start", my: 5 }} >
+      <ToastContainer />
+
+      <Box sx={{ display: 'flex', flexDirection: "column", alignItems: 'flex-start' }}>
+        <Box sx={{ mx: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+
+          <Typography > Player ({gameData?.players[0] === playerId ? 'X' : 'O'}) : </Typography>
+          {playerId &&
+            <TextField
+              id="filled-required"
+              label="Player"
+              defaultValue={playerId}
+              onChange={(e) => {
+                debouncedUpdatePlayerId(gameId, playerId, e.target.value)
+              }}
+              placeholder={playerId}
+              sx={{ mx: 1 }}
+            />}
+        </Box>
+        <Typography sx={{ mx: 3, mt: 3 }}>Game: {gameId}</Typography>
+      </Box>
+      {/* {gameId } *{gameData.players.length } *{ gameData?.status === "waiting" } *{ !gameJoined} */}
+      {(gameId && gameData && gameData?.status === "waiting" && gameJoined) && <>
+        <Typography sx={{ my: 6, display: 'flex', flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          Waitnig another player to join this session with you
+        </Typography>
+        <br /> <CircularProgress />
+        <Button variant="contained" onClick={restart} > Start Over</Button>
+      </>}
+
       {!gameId && (
-        <Stack direction="row" spacing={2} sx={{ my: 5, flexWrap: 'wrap',alignItems: "center", justifyContent: "center"  }}>
-          <Button variant="contained" onClick={handleCreateGame}>Create Game</Button>
-          <Button variant="contained" onClick={handleJoinExistGame}>Join Existing Game</Button>
-          <Button variant="contained" onClick={handleJoinRandomGame}>Join Random Game</Button>
+        <Stack direction="row" sx={{ width: "100%", my: 5, alignItems: "center", justifyContent: "center" }}>
+          <Grid container spacing={2} sx={{ width: "80%", alignItems: "center", justifyContent: "center", }}>
+            <Grid item>
+              <Button variant="contained" onClick={handleCreateGame}>Create New Game</Button>
+            </Grid>
+            <Grid item>
+
+              <Button variant="contained" onClick={handleJoinExistGame}>Join Existing Game</Button>
+            </Grid>
+            <Grid item>
+              <Button variant="contained" onClick={handleJoinRandomGame}>Join Random Game</Button>
+            </Grid >
+          </Grid >
+
         </Stack>
 
-      )}
+      )
+      }
 
-      {(joinExist && !gameJoined) && (
-        <Box sx={{ my: 5 }}>
-          <TextField
-            fullWidth
-            value={gameId || ''}
-            onChange={(e) => setGameId(e.target.value)}
-            placeholder="Enter Game ID"
-          />
-          <Button variant="contained" onClick={handleJoinGame} >Join Game</Button>
-        </Box>
-      )}
-      {(gameData && gameStarted) && (
-        <Grid container spacing={2} sx={{width: {xs: '80%',sm:'30%'} ,my: 10, alignItems: "center", justifyContent: "center"}}  >
-          {/* Render your game board here using gameData */}
-          {gameData.board.map((cell, index) => (
-            <Grid item xs={4} key={index}>
-              <Button variant="contained" onClick={() => handleCellClick(index)}>
-                {cell || '-'}
-              </Button>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-      {(winner && gameId ) && (
-        <Typography sx={{ mx: 3, my: 5 }}>Player {winner} wins</Typography>
-      )}
-      {( gameData && gameData.status==="completed" ) && (     
-        <Button variant="contained" onClick={restart} >Play Again</Button>
-      )}
-    </Stack>
+      {
+        (joinExist && !gameJoined) && (
+          <Box sx={{ my: 5 }}>
+            <TextField
+              fullWidth
+              value={gameId || ''}
+              onChange={(e) => setGameId(e.target.value)}
+              placeholder="Enter Game ID"
+            />
+            <Button variant="contained" onClick={handleJoinGame} >Join Game</Button>
+          </Box>
+        )
+      }
+      {
+        (gameData && gameStarted) && (
+          <Grid container spacing={2} sx={{ width: { xs: '80%', sm: '30%' }, my: 10, alignItems: "center", justifyContent: "center" }}  >
+            {/* Render your game board here using gameData */}
+            {gameData.board.map((cell, index) => (
+              <Grid item xs={4} key={index}>
+                <Button variant="contained" onClick={() => handleCellClick(index)}>
+                  {cell || '-'}
+                </Button>
+              </Grid>
+            ))}
+            {/* <Button variant="contained" sx={{ my: 6 }} onClick={restart} >Reset Game</Button> */}
+          </Grid>
+        )
+      }
+      {
+        (winner && gameId) && (
+          <Typography sx={{ mx: 3, my: 5 }}>Player {winner} wins</Typography>
+        )
+      }
+      {gameId &&
+        <Grid container spacing={2} sx={{ width: "80%", alignItems: "center", justifyContent: "center", my: 3 }}>
+          <Grid item>
+            <Button variant="contained" color="warning" onClick={menu} >Menu</Button>
+          </Grid>
+          <Grid item>
+            <Button variant="contained" color="secondary" onClick={restart} >Play Again</Button>
+          </Grid>
+        </Grid >}
 
-      <Box sx={{display: "flex",alignItems: 'end', justifyContent: "center"}}>
+    </Stack >
+
+
+
+    <Box sx={{ display: "flex", alignItems: 'end', justifyContent: "center" }}>
       <Link href="https://www.linkedin.com/in/sandy-mohammed-developer/"> Sandy Mohammed </Link>
-      </Box>
+    </Box>
   </>
 
   );
