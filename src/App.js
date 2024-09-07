@@ -181,7 +181,7 @@ export default function TicTacToe() {
         <Stack direction="row" sx={{ width: "100%", my: 5, alignItems: "center", justifyContent: "center" }}>
           <Grid container spacing={2} sx={{ width: "80%", alignItems: "center", justifyContent: "center", }}>
             <Grid item>
-              <Button variant="contained" onClick={handleCreateGame}>Create New Game</Button>
+              <Button variant="contained" onClick={handleCreateGame}>New Game</Button>
             </Grid>
             <Grid item>
 
